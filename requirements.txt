@@ -8,3 +8,9 @@ pytest>=8,<10
 httpx>=0.27,<1
 python-dotenv>=1,<2
 openai>=1,<3
+fastapi
+uvicorn
+openai
+python-dotenv
+httpx
+GEMINI_MODEL=gemini-3.8-flash
