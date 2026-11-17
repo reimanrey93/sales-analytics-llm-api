@@ -1,79 +1,78 @@
-
 # Sales Analytics LLM API
 
-A Python-based sales analytics application combining data engineering,
-DuckDB, FastAPI, and Google Gemini to answer natural-language questions
-using dynamically generated SQL queries.
+A Python sales analytics application that combines data engineering, DuckDB, FastAPI, and Google Gemini to answer natural-language questions through validated SQL queries.
 
 Developed as a technical assessment for a Python / Analytic Engineer position.
 
 ## Architecture
 
 ```text
-Synthetic Orders CSV
-        |
-        v
-  Pandas ETL Pipeline
-  - Remove duplicates
-  - Validate dates
-  - Handle missing amounts
-        |
-        v
-      DuckDB
-  - Clean orders
-  - Monthly sales view
-  - Top 10 customers view
-        ^
-        |
-  Read-only SQL execution
-        ^
-        |
-  SQLGlot validation
-        ^
-        |
+Natural-language question
+          |
+          v
+    FastAPI POST /ask
+          |
+          v
   Google Gemini (NL-to-SQL)
-        ^
-        |
-  FastAPI POST /ask
-        ^
-        |
-  Natural-language question
+          |
+          v
+   SQLGlot validation
+          |
+          v
+ Read-only SQL execution
+          |
+          v
+        DuckDB
+     /         \
+ Clean orders   Analytical views
+     ^
+     |
+ Pandas ETL pipeline
+ - Remove duplicate orders
+ - Validate dates
+ - Remove invalid or missing amounts
+     ^
+     |
+ Synthetic orders CSV
 ```
+
+The language model generates a candidate query; the application validates and executes it against actual database records.
 
 ## Technology Stack
 
-- Python 3.12
-- Pandas for data processing
-- DuckDB for analytical storage and SQL views
-- FastAPI and Pydantic for the REST API
-- Google Gemini for natural-language-to-SQL generation
-- SQLGlot for SQL parsing and validation
-- Pytest for automated testing
+- **Python 3.12** — application language
+- **Pandas** — data cleaning and transformation
+- **DuckDB** — embedded analytical database and SQL views
+- **FastAPI / Pydantic** — REST API and request validation
+- **Google Gemini** — natural-language-to-SQL generation
+- **SQLGlot** — SQL parsing and structural validation
+- **Pytest** — automated tests
 
 ## Project Structure
 
 ```text
 app/
-  main.py           # FastAPI application
-  llm.py            # Gemini integration
-  sql_validator.py  # SQL validation
-  database.py       # Read-only DuckDB execution
-  etl.py            # Data cleaning and loading
+  main.py             # FastAPI application
+  llm.py              # Gemini integration
+  sql_validator.py    # SQL validation
+  database.py         # Read-only DuckDB execution
+  etl.py              # Data cleaning and loading
 
 scripts/
-  generate_data.py  # Synthetic data generator
-  create_views.py   # Analytical views
+  generate_data.py    # Synthetic orders generator
+  create_views.py     # Analytical views creation
 
 sql/
   views.sql
 
 tests/
+  conftest.py         # Isolated temporary DuckDB fixtures
   test_api.py
   test_etl.py
   test_sql_validator.py
   test_views.py
 
-data/                # Generated locally
+data/                 # Locally generated data (not committed)
 .env.example
 .gitignore
 requirements.txt
@@ -82,7 +81,7 @@ README.md
 
 ## Installation
 
-Requirements: Python 3.11+ and Git.
+**Requirements:** Python 3.11+ and Git. The project was developed and tested with Python 3.12.
 
 Clone the repository:
 
@@ -93,18 +92,25 @@ cd sales-analytics-llm-api
 
 Create and activate a virtual environment.
 
-Windows PowerShell:
+**Windows PowerShell:**
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-If PowerShell blocks activation, use:
+If PowerShell blocks activation, run the following and activate again:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
+```
+
+**macOS / Linux:**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
 Install dependencies:
@@ -113,100 +119,79 @@ Install dependencies:
 python -m pip install -r requirements.txt
 ```
 
-## Dataset Generation
+## Dataset Generation and ETL
 
-Generate synthetic orders:
+Generate the reproducible synthetic dataset:
 
 ```bash
 python scripts/generate_data.py
 ```
 
-The generated CSV contains 1,230 records:
+The resulting `data/orders_raw.csv` contains **1,230 records**: 1,200 initial orders and 30 intentionally duplicated records. Among the original orders, 20 dates are invalid and 25 amounts are missing.
 
-- 1,200 original orders
-- 30 duplicate records
-- 20 invalid dates
-- 25 missing amounts
-
-The generator uses a fixed random seed for reproducibility.
-
-## ETL Pipeline
-
-Run:
+Clean and load the dataset into DuckDB:
 
 ```bash
 python -m app.etl
 ```
 
-The pipeline removes duplicate orders, invalid dates and
-records with missing or invalid amounts.
+The ETL removes duplicate order IDs, invalid dates, and missing or invalid amounts. It also rejects negative amounts. For the generated dataset, the expected result is:
 
-Expected result:
+| Metric | Rows |
+|---|---:|
+| Input records | 1,230 |
+| Duplicate orders removed | 30 |
+| Invalid dates removed | 20 |
+| Missing or invalid amounts removed | 25 |
+| Clean records | **1,155** |
 
-- Original rows: 1,230
-- Duplicates removed: 30
-- Invalid dates removed: 20
-- Invalid or missing amounts removed: 25
-- Clean rows: 1,155
-
-The cleaned records are stored in `data/sales.duckdb`.
-
-Missing amounts are not artificially imputed because doing so
-could distort financial aggregations.
+The output is stored in `data/sales.duckdb`, in a table named `pedidos`. Missing financial values are excluded rather than imputed to avoid introducing artificial revenue.
 
 ## Analytical SQL Views
 
-Create the views:
+Create the views after running the ETL:
 
 ```bash
 python scripts/create_views.py
 ```
 
-The application provides:
+The application provides two views:
 
-1. `ventas_mensuales_pais`: monthly sales by country.
-2. `top_10_clientes`: the ten highest-spending customers.
+| View | Description |
+|---|---|
+| `ventas_mensuales_pais` | Monthly sales and order counts by country |
+| `top_10_clientes` | Ten customers with the highest total purchases |
 
-Only completed orders contribute to sales calculations.
+Only orders with `estado = 'completado'` contribute to these sales metrics.
 
 ## Gemini Configuration
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` and set your own API key:
 
 ```dotenv
 GEMINI_API_KEY=your_private_api_key
 GEMINI_MODEL=gemini-3.8-flash
 ```
 
-Obtain a key from Google AI Studio:
+Create a key in [Google AI Studio](https://aistudio.google.com/api-keys). Model availability and API usage limits depend on your account.
 
-https://aistudio.google.com/api-keys
-
-API access and pricing depend on the selected model and account.
-
-Never commit real API keys. The `.env` file is excluded from Git.
+**Never commit your real API key.** The `.env` file is excluded by `.gitignore`. A Gemini key is needed for live `/ask` requests, but not for the automated tests, which mock the LLM.
 
 ## Running the API
 
-After generating the dataset and creating the views:
+From the project root, after generating the dataset and creating the views:
 
 ```bash
 python -m uvicorn app.main:app --reload
 ```
 
-Interactive API documentation:
+Open the interactive documentation at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
 
-http://127.0.0.1:8000/docs
+**Health check:** `GET /health`
 
-Health check:
+**Natural-language analytics:** `POST /ask`
 
-GET /health
-
-Natural-language analytics:
-
-POST /ask
-
-Example request:
+Example JSON request:
 
 ```json
 {
@@ -223,147 +208,71 @@ ORDER BY total_comprado DESC
 LIMIT 10;
 ```
 
-The API returns the question, generated SQL, rows retrieved
-from DuckDB, and the number of returned rows.
-
-Responses contain database results rather than numerical
-answers invented by the language model.
+The API returns the original question, generated SQL, retrieved rows, and row count. Numerical results come from DuckDB, not from LLM-generated estimates.
 
 ## SQL Validation and Safety
 
-The LLM does not execute SQL directly.
+The LLM does not execute SQL directly. Candidate queries are parsed with SQLGlot and checked before being submitted to DuckDB.
 
-SQLGlot inspects the generated SQL before execution.
+The current implementation:
 
-Current restrictions include:
+- Accepts a single `SELECT` statement only.
+- Allows access only to `pedidos`, `ventas_mensuales_pais`, and `top_10_clientes`.
+- Rejects joins, subqueries, common table expressions, and unsupported SQL functions.
+- Rejects data-modification statements and arbitrary table-valued file access.
+- Opens DuckDB in read-only mode.
+- Uses `EXPLAIN` to detect invalid references before execution.
+- Returns at most 100 rows per request.
 
-- Single SELECT statement only
-- Explicit allowlist of database relations
-- No INSERT, UPDATE, DELETE or DDL
-- No joins, CTEs or subqueries
-- Restricted SQL functions
-- No arbitrary table-valued file access
-- DuckDB connection opened in read-only mode
-- Database schema validation using EXPLAIN
-- Maximum of 100 returned rows
+Invalid or rejected SQL produces an HTTP `400` response; LLM generation failures produce HTTP `503`.
 
-Invalid SQL returns an HTTP 400 response.
-LLM generation failures return HTTP 503.
-
-These controls reduce risk but are not a complete
-production-grade sandbox.
+These safeguards are appropriate to the assessment scope, but do not constitute a complete production-grade query sandbox.
 
 ## Automated Tests
 
-After preparing the local database and SQL views, run:
+Run the test suite directly after installing dependencies:
 
 ```bash
 python -m pytest -v
 ```
 
-The implemented test suite covers:
+The tests use isolated temporary DuckDB databases and mocked LLM responses, so they do **not** require the generated local dataset, a running API server, or a Gemini API key.
 
-- Data cleaning
-- Analytical SQL views
-- Valid SQL queries
-- Destructive or unauthorized SQL
-- FastAPI health endpoint
-- API execution with a mocked LLM
-- LLM error handling
+Coverage includes data cleaning, analytical SQL views, accepted and rejected SQL, the FastAPI health endpoint, successful requests with a mocked LLM, and error handling.
 
-Latest local verification: 16 tests passed.
-
-The mocked LLM tests do not consume Gemini API quota.
+**Latest local verification: 16 tests passed.**
 
 ## Technical Decisions
 
-### Why DuckDB?
+**Why DuckDB?** It provides fast analytical SQL without a separate database server, keeping local setup simple and reproducible.
 
-DuckDB is lightweight, embedded, and optimized for analytical
-SQL workloads. It eliminates the need for an external database
-server while remaining suitable for this small assessment.
+**Why SQLGlot?** Structural parsing is more reliable than checking generated SQL through keyword-based string filters alone.
 
-### Why SQLGlot?
+**Why separate the LLM and database layers?** Gemini generates candidate SQL, while the application controls validation and execution. This separation improves testability and limits direct LLM access to the database.
 
-The application parses SQL structurally rather than attempting
-to block malicious statements through keyword matching alone.
+**Why discard invalid financial records?** Missing or invalid amounts cannot be reliably reconstructed; excluding them avoids fabricating sales values.
 
-### Why separate the LLM and database layers?
+## Future Improvements
 
-The language model generates candidate SQL. The application
-is responsible for validation and execution. This separation
-makes the system easier to test and maintain.
+Given additional development time, I would focus on:
 
-### Why discard invalid financial records?
-
-Missing amounts cannot be reliably inferred. Discarding
-invalid records avoids introducing fabricated sales values.
-
-## Limitations and Future Improvements
-
-With more development time, I would:
-
-1. Make every test fully independent of pre-generated files.
-2. Introduce query execution timeouts and resource limits.
-3. Strengthen SQL function and column-level allowlists.
-4. Add structured logs, metrics and request tracing.
-5. Add pagination for larger query results.
-6. Containerize the application using Docker.
-7. Add continuous integration with GitHub Actions.
-8. Support alternative LLM providers behind a common interface.
-9. Evaluate cloud deployment and managed analytical storage.
+- Adding query execution timeouts and resource limits.
+- Expanding SQL validation and automated security tests.
+- Containerizing the application and adding CI/CD.
 
 ## AI-Assisted Development
 
-AI tools were used as development assistance, not as a
-substitute for testing or technical validation.
+**Tools:** OpenAI Codex (VS Code) and ChatGPT.
 
-Tool used: ChatGPT.
+AI tools supported architecture design, Python development, SQL generation, debugging, testing, and documentation.
 
-### What I asked AI to help with
+- **Requested:** Assistance with the ETL pipeline, FastAPI and Gemini integration, SQL validation, and automated tests.
+- **Accepted:** Modular architecture, DuckDB analytical views, SQLGlot-based validation, and mocked LLM tests.
+- **Corrected:** Gemini model compatibility, incomplete SQL generation, dependency configuration, and test isolation.
 
-- Initial project architecture and module decomposition
-- Pandas ETL implementation
-- DuckDB analytical SQL views
-- FastAPI and Gemini integration
-- SQLGlot validation strategies
-- Automated test examples
-- Documentation structure
-
-### What I accepted
-
-- Modular separation between ETL, LLM, validation and API
-- Synthetic dataset generation
-- Use of DuckDB for local analytics
-- FastAPI request validation
-- Pytest with a mocked LLM
-- Explicit allowlisting of SQL relations
-
-### What I corrected or verified
-
-- Replaced the initially proposed LLM model after an API error
-- Increased generation output limits after truncated SQL
-- Added checks for incomplete LLM generation
-- Corrected a test confusing SQL syntax with column existence
-- Added database-level schema verification using EXPLAIN
-- Corrected the dependency list
-- Removed a credential from an unpublished Git commit
-- Verified API responses against actual DuckDB records
-
-Each development stage was tested and committed separately.
-
-## Development History
-
-The Git history records the progressive implementation of:
-
-1. Synthetic dataset generation and ETL
-2. Analytical SQL views
-3. FastAPI and Gemini integration
-4. SQL validation and read-only database execution
-5. Final documentation and reproducibility improvements
+Changes were verified through local execution, automated tests, and incremental Git commits.
 
 ## Author
 
-Reiman Alfonso Azcuy
-
-GitHub: https://github.com/reimanrey93
+Reiman Alfonso Azcuy  
+GitHub: [reimanrey93](https://github.com/reimanrey93)
