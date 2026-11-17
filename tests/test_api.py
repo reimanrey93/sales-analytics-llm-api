@@ -6,8 +6,20 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.llm import LLMGenerationError
 
+import pytest
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def isolated_database(test_db, monkeypatch):
+    """Redirect API database access to temporary DuckDB."""
+
+    monkeypatch.setattr(
+        "app.database.DB_PATH",
+        test_db,
+    )
+
 
 
 def test_health():

@@ -1,18 +1,17 @@
 
-from pathlib import Path
+"""Tests for DuckDB analytical views."""
 
 import duckdb
 
 
-ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / "data" / "sales.duckdb"
-SQL_PATH = ROOT / "sql" / "views.sql"
+def test_analytical_views(test_db):
+    """Verify analytical views using an isolated database."""
 
+    with duckdb.connect(
+        str(test_db),
+        read_only=True,
+    ) as conn:
 
-def test_analytical_views():
-    assert DB_PATH.exists(), "Run ETL before testing views"
-
-    with duckdb.connect(str(DB_PATH), read_only=True) as conn:
         monthly = conn.execute(
             "SELECT COUNT(*) FROM ventas_mensuales_pais"
         ).fetchone()[0]
@@ -24,13 +23,16 @@ def test_analytical_views():
         assert monthly > 0
         assert customers == 10
 
-        # Check that the ranking is descending.
         amounts = [
             row[0]
             for row in conn.execute(
-                "SELECT total_comprado FROM top_10_clientes "
+                "SELECT total_comprado "
+                "FROM top_10_clientes "
                 "ORDER BY total_comprado DESC"
             ).fetchall()
         ]
 
-        assert amounts == sorted(amounts, reverse=True)
+        assert amounts == sorted(
+            amounts,
+            reverse=True,
+        )
